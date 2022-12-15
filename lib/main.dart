@@ -1,9 +1,17 @@
+import 'dart:async';
+
+import 'package:faunadb_data/faunadb_data.dart';
 import 'package:flutter/material.dart';
+import 'package:fluttertoast/fluttertoast.dart';
+import 'package:order_management/constants.dart';
 import 'package:order_management/dispatched.dart';
+import 'package:order_management/models/order.dart';
+import 'package:order_management/utils.dart';
 
 import 'orders.dart';
 
 void main() {
+  setCurrentUserDbKey(faunaKey);
   runApp(const MyApp());
 }
 
@@ -27,7 +35,8 @@ class MyApp extends StatelessWidget {
         // is not restarted.
         primarySwatch: Colors.blue,
       ),
-      home: const DefaultTabController(length: 2, child: MyHomePage(title: 'Order Management')),
+      home: const DefaultTabController(
+          length: 2, child: MyHomePage(title: 'Order Management')),
     );
   }
 }
@@ -51,25 +60,97 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
+  final companyNameController = TextEditingController();
+  final orderDetailsController = TextEditingController();
+  final orderRepository = OrderRepository();
+  final orderStream = StreamController<Order>();
 
   void openOrderModal() {
-    showModalBottomSheet(
+    showDialog(
       context: context,
       builder: (context) {
-        return Container(
-          height: 300,
-          color: Colors.white,
-          child: Center(
-            child: TextButton(
-              child: const Text('Close Modal'),
-              onPressed: () {
-                Navigator.pop(context);
-              },
+        return SimpleDialog(
+          contentPadding: const EdgeInsets.all(20),
+          children: [
+            TextField(
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  labelText: 'Company Name',
+                ),
+                controller: companyNameController),
+            const Padding(padding: EdgeInsets.all(10)),
+            TextField(
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                labelText: 'Order Details',
+              ),
+              keyboardType: TextInputType.multiline,
+              maxLines: 10,
+              controller: orderDetailsController,
             ),
-          ),
+            const Padding(padding: EdgeInsets.all(10)),
+            ElevatedButton(
+              onPressed: () async {
+                Navigator.pop(context);
+                // save order
+                final id = await orderRepository.nextId();
+                if (id.isPresent) {
+                  try {
+                    final order = await orderRepository.save(
+                        Order(
+                            id.value,
+                            companyNameController.text,
+                            orderDetailsController.text,
+                            'Pending',
+                            formatDate()),
+                        getOrderFromJson);
+
+                    // add order to stream
+                    setState(() {
+                      companyNameController.clear();
+                      orderDetailsController.clear();
+                      orderStream.add(order);
+                    });
+                  } on FaunaDbException catch (e) {
+                    Fluttertoast.showToast(
+                        msg: "Error: ${e.cause}",
+                        toastLength: Toast.LENGTH_LONG,
+                        gravity: ToastGravity.BOTTOM,
+                        timeInSecForIosWeb: 1,
+                        backgroundColor: Colors.red,
+                        textColor: Colors.white,
+                        fontSize: 16.0);
+                  }
+                } else {
+                  setState(() {
+                    companyNameController.clear();
+                    orderDetailsController.clear();
+                  });
+                  // show a error toast
+                  Fluttertoast.showToast(
+                      msg: 'Error while saving order',
+                      toastLength: Toast.LENGTH_SHORT,
+                      gravity: ToastGravity.BOTTOM,
+                      timeInSecForIosWeb: 1,
+                      backgroundColor: Colors.red,
+                      textColor: Colors.red,
+                      fontSize: 16.0);
+                }
+              },
+              child: const Text('Submit'),
+            )
+          ],
         );
       },
     );
+  }
+
+  @override
+  void dispose() {
+    companyNameController.dispose();
+    orderDetailsController.dispose();
+    orderStream.close();
+    super.dispose();
   }
 
   @override
@@ -87,16 +168,13 @@ class _MyHomePageState extends State<MyHomePage> {
         title: Text(widget.title),
         bottom: const TabBar(
           tabs: [
-            Tab(icon: Icon(Icons.book),text: 'Orders'),
-            Tab(icon: Icon(Icons.delivery_dining),text: 'Dispatched'),
+            Tab(icon: Icon(Icons.book), text: 'Orders'),
+            Tab(icon: Icon(Icons.delivery_dining), text: 'Dispatched'),
           ],
         ),
       ),
-      body: const TabBarView(
-        children: [
-          Orders(),
-          Dispatched()
-        ],
+      body: TabBarView(
+        children: [Orders(orderStream: orderStream,orderRepository: orderRepository,), Dispatched(orderRepository: orderRepository)],
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: openOrderModal,
