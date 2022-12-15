@@ -1,0 +1,1 @@
+const faunaKey=String.fromEnvironment('FAUNA_KEY', defaultValue: '');
