@@ -7,13 +7,20 @@ import 'package:order_management/utils.dart';
 
 import 'constants.dart';
 import 'models/order.dart';
+import 'models/user.dart';
 
 class Orders extends StatefulWidget {
   const Orders(
-      {Key? key, required this.orderStream, required this.orderRepository})
+      {Key? key,
+      required this.orderStream,
+      required this.orders,
+      required this.user,
+      required this.orderRepository})
       : super(key: key);
 
-  final StreamController<Order> orderStream;
+  final StreamController<Map<EventType, dynamic>> orderStream;
+  final User? user;
+  final Map<String, Order> orders;
   final OrderRepository orderRepository;
 
   @override
@@ -21,17 +28,55 @@ class Orders extends StatefulWidget {
 }
 
 class _OrdersState extends State<Orders> {
-  final client = FaunaClient(
-      FaunaConfig.build(secret: faunaKey));
+  final client = FaunaClient(FaunaConfig.build(secret: faunaKey));
+
+  StreamSubscription<Map<EventType, dynamic>>? streamSubscription;
+
+  bool isLoading = false;
 
   List<Order> orders = [];
 
   @override
   void initState() {
-    if (!widget.orderStream.hasListener) {
-      widget.orderStream.stream.listen((event) {
-        setState(() {
-          orders.add(event);
+    if (mounted) {
+      setState(() {
+        streamSubscription = widget.orderStream.stream.listen((event) async {
+          final key = event.keys.first;
+          final value = event.values.first;
+          switch (key) {
+            case EventType.orderAdded:
+              if (value is Order) {
+                setState(() {
+                  orders.add(value);
+                });
+              }
+              break;
+            case EventType.orderDeleted:
+              if (value is Map<String, Order>) {
+                setState(() {
+                  orders.removeWhere((element) {
+                    if (value.containsKey(element.id)) {
+                      widget.orderRepository
+                          .remove(element.id, getOrderFromJson);
+                      return true;
+                    }
+                    return false;
+                  });
+                });
+              }
+              break;
+            case EventType.orderDispatched:
+              if (value is String) {
+                final order =
+                    orders.firstWhere((element) => element.id == value);
+                order.orderStatus = 'Dispatched';
+                setState(() {
+                  orders.removeWhere((element) => element.id == value);
+                });
+                await widget.orderRepository.save(order, getOrderFromJson);
+              }
+              break;
+          }
         });
       });
     }
@@ -46,15 +91,22 @@ class _OrdersState extends State<Orders> {
         Paginate(Match(Index('dispatched_orders'), terms: ["Pending"])),
         Lambda("order", Get(Var("order"))));
 
-    final result = await deserializeFauna<Order>(query, client, getOrderFromJson);
+    setState(() {
+      isLoading = true;
+    });
+
+    final result =
+        await deserializeFauna<Order>(query, client, getOrderFromJson);
 
     setState(() {
       orders = result;
+      isLoading = false;
     });
   }
 
   @override
   void dispose() {
+    streamSubscription?.cancel();
     client.close();
     super.dispose();
   }
@@ -62,37 +114,38 @@ class _OrdersState extends State<Orders> {
   @override
   Widget build(BuildContext context) {
     // add spinner if length is 0
-    if (orders.isEmpty) {
+    if (isLoading) {
       return const Center(
         child: CircularProgressIndicator(),
       );
     }
 
     return ListView.builder(
-      itemCount: orders.length,
-      itemBuilder: (context, index) {
-        final order = orders[index];
-        return Card(
-          child: ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: IconButton(icon: const Icon(Icons.send,color: Colors.blue,),onPressed: () {
-              order.orderStatus = "Dispatched";
-              widget.orderRepository.save(order,getOrderFromJson);
-              setState(() {
-                orders.removeAt(index);
-              });
-            },),
-            title: Text(order.companyName),
-            subtitle: Text(order.orderDetails),
-            trailing: IconButton(icon: const Icon(Icons.delete_forever,color: Colors.blue,),onPressed: () {
-              widget.orderRepository.remove(order.id,getOrderFromJson);
-              setState(() {
-                orders.removeAt(index);
-              });
-            },),
-          ),
-        );
-      },
-    );
+        itemCount: orders.length,
+        itemBuilder: (context, index) {
+          final order = orders[index];
+          return Card(
+              child: CheckboxListTile(
+            contentPadding: const EdgeInsets.all(10),
+            title: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 15),
+              child: Text(order.companyName),
+            ),
+            subtitle: Text(
+                "Order Date: ${order.createdAt}\nOrder Deadline: ${formatDate()}\n\n${order.orderDetails}"),
+            value: widget.orders.containsKey(order.id),
+            onChanged: (bool? value) {
+              if (value == true) {
+                setState(() {
+                  widget.orders[order.id] = order;
+                });
+              } else {
+                setState(() {
+                  widget.orders.remove(order.id);
+                });
+              }
+            },
+          ));
+        });
   }
 }
