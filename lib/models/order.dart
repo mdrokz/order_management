@@ -5,10 +5,11 @@ class Order extends Entity<Order> {
   String companyName;
   String orderDetails;
   String orderStatus;
+  String deadline;
   String createdAt;
 
   Order(this.id, this.companyName, this.orderDetails, this.orderStatus,
-      this.createdAt);
+      this.deadline,this.createdAt);
 
   @override
   fromJson(Map<String, dynamic> model) {
@@ -17,6 +18,7 @@ class Order extends Entity<Order> {
       model['companyName'],
       model['orderDetails'],
       model['orderStatus'],
+      model['deadline'],
       model['createdAt'],
     );
   }
@@ -33,6 +35,7 @@ class Order extends Entity<Order> {
       'companyName': companyName,
       'orderDetails': orderDetails,
       'orderStatus': orderStatus,
+      'deadline': deadline,
       'createdAt': createdAt
     };
   }
@@ -47,6 +50,7 @@ Order getOrderFromJson(Map<String, dynamic> json) {
     json['companyName'] as String,
     json['orderDetails'] as String,
     json['orderStatus'] as String,
+    json['deadline'] as String,
     json['createdAt'] as String,
   );
 }
