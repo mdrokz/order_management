@@ -10,27 +10,33 @@ import 'package:faunadb_http/query.dart';
 import 'package:order_management/models/user.dart';
 import 'package:pointycastle/export.dart';
 
+import 'models/order.dart';
+
 
 enum EventType {
   orderAdded,
+  search,
   orderDispatched,
   orderDeleted,
+  userAdded,
+  userDeleted,
 }
 
-String formatDate() {
-  DateTime now = DateTime.now();
-  String formattedDate = DateFormat('MMMM d, y').format(now);
+String formatDate(DateTime dateTime) {
+  String formattedDate = DateFormat('MMMM d, y').format(dateTime);
   return formattedDate;
 }
 
-Future<void> createUser(UserRepository userRepository,UserType userType, String password) async {
+Future<User?> createUser(UserRepository userRepository,UserType userType, String password) async {
   final id = await userRepository.nextId();
   if (id.isPresent) {
     final user = User(id.value, userType,
-        password, formatDate());
+        hashPassword(password), DateTime.now().toIso8601String());
     try {
       final result = await userRepository.save(
           user, getUserFromJson);
+
+      return result;
       // await localStorage.setItem('user', result.model());
     } on FaunaDbException catch (e) {
       Fluttertoast.showToast(
@@ -42,7 +48,17 @@ Future<void> createUser(UserRepository userRepository,UserType userType, String 
           textColor: Colors.white,
           fontSize: 16.0);
     }
+
+    return null;
   }
+  return null;
+}
+
+// implement function to compare if date1 is greater than date2 using Intl
+bool compareDate(String date1, String date2) {
+  final date1Formatted = DateFormat('MMMM d, y').parse(date1);
+  final date2Formatted = DateFormat('MMMM d, y').parse(date2);
+  return date1Formatted.isAfter(date2Formatted);
 }
 
 Future<List<T>> deserializeFauna<T>(Expr query,FaunaClient client,Function deserialize) async {
