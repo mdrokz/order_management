@@ -1,12 +1,7 @@
-import 'dart:async';
-import 'dart:typed_data';
-
 import 'package:faunadb_data/faunadb_data.dart';
 import 'package:flutter/material.dart';
-import 'package:fluttertoast/fluttertoast.dart';
 import 'package:order_management/constants.dart';
 import 'package:order_management/login.dart';
-import 'package:order_management/utils.dart';
 
 import 'home.dart';
 
@@ -25,8 +20,7 @@ class MyApp extends StatelessWidget {
       title: 'Order Management',
       initialRoute: '/login',
       routes: {
-        '/': (context) => const DefaultTabController(
-            length: 3, child: MyHomePage(title: 'Order Management')),
+        '/': (context) => const MyHomePage(title: 'Order Management'),
         '/login': (context) => const LoginWrapper(),
       },
       theme: ThemeData(
