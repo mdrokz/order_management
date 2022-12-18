@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:faunadb_data/faunadb_data.dart';
 import 'package:flutter/material.dart';
 import 'package:faunadb_http/faunadb_http.dart';
 import 'package:faunadb_http/query.dart';
@@ -36,47 +37,80 @@ class _OrdersState extends State<Orders> {
 
   List<Order> orders = [];
 
+  Future<void> handleEvent(Map<EventType,dynamic> event) async {
+    final key = event.keys.first;
+    final value = event.values.first;
+    switch (key) {
+      case EventType.orderAdded:
+        if (value is Order) {
+          setState(() {
+            orders.add(value);
+          });
+        }
+        break;
+      case EventType.orderDeleted:
+        if (value is Map<String, Order>) {
+          setState(() {
+            orders.removeWhere((element) {
+              if (value.containsKey(element.id)) {
+                widget.orderRepository
+                    .remove(element.id, getOrderFromJson);
+                return true;
+              }
+              return false;
+            });
+          });
+        }
+        break;
+      case EventType.orderDispatched:
+        if (value is Map<String, Order>) {
+          setState(() {
+            orders.removeWhere((element) {
+              final order = element;
+              order.orderStatus = 'Dispatched';
+              if (value.containsKey(element.id)) {
+                widget.orderRepository.save(order, getOrderFromJson);
+                return true;
+              }
+              return false;
+            });
+          });
+
+        }
+        break;
+      case EventType.search:
+        {
+          if (value is String && value.isNotEmpty) {
+            final query = Map_(
+                Paginate(
+                    Match(Index('orders_by_company'), terms: [value,'Pending'])),
+                Lambda("order", Get(Var("order"))));
+
+            setState(() {
+              isLoading = true;
+            });
+
+            final result = await deserializeFauna<Order>(
+                query, client, getOrderFromJson);
+
+            setState(() {
+              orders = result;
+              isLoading = false;
+            });
+          } else {
+            loadOrders();
+          }
+        }
+        break;
+    }
+  }
+
   @override
   void initState() {
     if (mounted) {
       setState(() {
-        streamSubscription = widget.orderStream.stream.listen((event) async {
-          final key = event.keys.first;
-          final value = event.values.first;
-          switch (key) {
-            case EventType.orderAdded:
-              if (value is Order) {
-                setState(() {
-                  orders.add(value);
-                });
-              }
-              break;
-            case EventType.orderDeleted:
-              if (value is Map<String, Order>) {
-                setState(() {
-                  orders.removeWhere((element) {
-                    if (value.containsKey(element.id)) {
-                      widget.orderRepository
-                          .remove(element.id, getOrderFromJson);
-                      return true;
-                    }
-                    return false;
-                  });
-                });
-              }
-              break;
-            case EventType.orderDispatched:
-              if (value is String) {
-                final order =
-                    orders.firstWhere((element) => element.id == value);
-                order.orderStatus = 'Dispatched';
-                setState(() {
-                  orders.removeWhere((element) => element.id == value);
-                });
-                await widget.orderRepository.save(order, getOrderFromJson);
-              }
-              break;
-          }
+        streamSubscription = widget.orderStream.stream.listen((event) {
+          handleEvent(event);
         });
       });
     }
@@ -87,9 +121,11 @@ class _OrdersState extends State<Orders> {
   }
 
   void loadOrders() async {
-    final query = Map_(
-        Paginate(Match(Index('dispatched_orders'), terms: ["Pending"])),
-        Lambda("order", Get(Var("order"))));
+    // final query = Map_(
+    //     Paginate(Match(Index('dispatched_orders'), terms: ["Pending"])),
+    //     Lambda("order", Get(Var("order"))));
+
+    final query = Call(Function_('get_filtered_orders'),arguments: ['Pending']);
 
     setState(() {
       isLoading = true;
@@ -124,6 +160,8 @@ class _OrdersState extends State<Orders> {
         itemCount: orders.length,
         itemBuilder: (context, index) {
           final order = orders[index];
+          final createdAt = DateTime.parse(order.createdAt);
+          final deadline = DateTime.parse(order.deadline);
           return Card(
               child: CheckboxListTile(
             contentPadding: const EdgeInsets.all(10),
@@ -132,7 +170,7 @@ class _OrdersState extends State<Orders> {
               child: Text(order.companyName),
             ),
             subtitle: Text(
-                "Order Date: ${order.createdAt}\nOrder Deadline: ${formatDate()}\n\n${order.orderDetails}"),
+                "Order Date: ${formatDate(createdAt)}\nOrder Deadline: ${formatDate(deadline)}\n\n${order.orderDetails}"),
             value: widget.orders.containsKey(order.id),
             onChanged: (bool? value) {
               if (value == true) {
