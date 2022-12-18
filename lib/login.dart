@@ -164,6 +164,13 @@ class _LoginState extends State<Login> {
                                     scaffoldController.close();
                                     Navigator.pop(context);
                                     return;
+                                  } else {
+                                    if(!mounted) return;
+                                    scaffoldController.close();
+                                    ScaffoldMessenger.of(context)
+                                        .showSnackBar(const SnackBar(
+                                            content: Text(
+                                                'Incorrect password or user type')));
                                   }
                                 }
                               }
