@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:faunadb_data/faunadb_data.dart';
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
-import 'package:intl/intl.dart';
 import 'package:localstorage/localstorage.dart';
 import 'package:order_management/constants.dart';
 import 'package:order_management/dispatched.dart';
@@ -38,12 +37,18 @@ class _MyHomePageState extends State<MyHomePage>
     with SingleTickerProviderStateMixin {
   final companyNameController = TextEditingController();
   final orderDetailsController = TextEditingController();
+  final nameController = TextEditingController();
   final passwordController = TextEditingController();
   final searchController = TextEditingController();
+
   final orderRepository = OrderRepository();
   final userRepository = UserRepository();
+
   final orderStream = StreamController<Map<EventType, dynamic>>.broadcast();
   final localStorage = LocalStorage(localStorageKey);
+
+  final _formKey = GlobalKey<FormState>();
+
   DateTime deadlineDate = DateTime.now();
   bool isSearching = false;
   final Map<String, Order> orders = {};
@@ -61,16 +66,23 @@ class _MyHomePageState extends State<MyHomePage>
       setState(() {
         this.user = user;
       });
+    } else {
+      if (!mounted) return;
+      Navigator.pushReplacementNamed(context, "/login");
     }
   }
 
-  void postSubmit(Order order) {
+  void postSubmit(Order order, Order? orderArg) {
     setState(() {
       companyNameController.clear();
       orderDetailsController.clear();
-      orderStream.add({EventType.orderAdded: order});
+      if (orderArg != null) {
+        orderStream.add({EventType.search: ""});
+      } else {
+        orderStream.add({EventType.orderAdded: order});
+      }
     });
-    Fluttertoast.showToast(msg: 'Order added successfully');
+    Fluttertoast.showToast(msg: 'Order ${orderArg != null ? "Updated" : "Added"} successfully');
   }
 
   @override
@@ -88,10 +100,7 @@ class _MyHomePageState extends State<MyHomePage>
     searchController.addListener(() {
       if (_debounce?.isActive ?? false) _debounce?.cancel();
       _debounce = Timer(const Duration(milliseconds: 1000), () {
-        final tabIndex = DefaultTabController.of(context)?.index;
-        if (tabIndex == 0 || tabIndex == 1) {
-          orderStream.add({EventType.search: searchController.text});
-        }
+        orderStream.add({EventType.search: searchController.text});
       });
     });
 
@@ -116,7 +125,7 @@ class _MyHomePageState extends State<MyHomePage>
               TextButton(
                 onPressed: () {
                   Navigator.pop(context);
-                  openOrderModal();
+                  openOrderModal(null);
                 },
                 child: const Text('Add Order'),
               ),
@@ -134,27 +143,60 @@ class _MyHomePageState extends State<MyHomePage>
                 contentPadding: const EdgeInsets.all(20),
                 title: const Text('Add User'),
                 children: [
-                  const TextField(
-                      decoration: InputDecoration(
-                    border: OutlineInputBorder(),
-                    labelText: 'Password',
-                  )),
-                  const Padding(padding: EdgeInsets.all(10)),
+                  Form(
+                      key: _formKey,
+                      child: Column(
+                        children: [
+                          TextFormField(
+                            decoration: const InputDecoration(
+                              border: OutlineInputBorder(),
+                              labelText: 'Name',
+                            ),
+                            controller: nameController,
+                            validator: (value) {
+                              if (value == null || value.isEmpty) {
+                                return 'Please enter a name';
+                              }
+                              return null;
+                            },
+                          ),
+                          const Padding(padding: EdgeInsets.all(10)),
+                          TextFormField(
+                              controller: passwordController,
+                              validator: (value) {
+                                if (value == null || value.isEmpty) {
+                                  return 'Please enter a password';
+                                }
+                                return null;
+                              },
+                              decoration: const InputDecoration(
+                                border: OutlineInputBorder(),
+                                labelText: 'Password',
+                              )),
+                          const Padding(padding: EdgeInsets.all(10)),
+                        ],
+                      )),
                   ElevatedButton(
                       onPressed: () async {
-                        final newUser = await createUser(userRepository,
-                            UserType.factory, passwordController.text);
-                        if (!mounted) return;
-                        Navigator.pop(context);
-                        if (newUser != null) {
-                          Fluttertoast.showToast(
-                              msg: 'User added successfully');
-                          setState(() {
-                            passwordController.clear();
-                            orderStream.add({EventType.userAdded: newUser});
-                          });
-                        } else {
-                          Fluttertoast.showToast(msg: 'Failed to create user');
+                        if (_formKey.currentState!.validate()) {
+                          final newUser = await createUser(
+                              userRepository,
+                              UserType.factory,
+                              nameController.text,
+                              passwordController.text);
+                          if (!mounted) return;
+                          Navigator.pop(context);
+                          if (newUser != null) {
+                            Fluttertoast.showToast(
+                                msg: 'User added successfully');
+                            setState(() {
+                              passwordController.clear();
+                              orderStream.add({EventType.userAdded: newUser});
+                            });
+                          } else {
+                            Fluttertoast.showToast(
+                                msg: 'Failed to create user');
+                          }
                         }
                       },
                       child: const Text("Submit"))
@@ -163,7 +205,12 @@ class _MyHomePageState extends State<MyHomePage>
         });
   }
 
-  void openOrderModal() {
+  void openOrderModal(Order? orderArg) {
+    if (orderArg != null) {
+      companyNameController.text = orderArg.companyName;
+      orderDetailsController.text = orderArg.orderDetails;
+      deadlineDate = DateTime.parse(orderArg.deadline);
+    }
     showDialog(
         context: context,
         builder: (context) {
@@ -173,13 +220,43 @@ class _MyHomePageState extends State<MyHomePage>
                 contentPadding: const EdgeInsets.all(20),
                 title: const Text('Add Order'),
                 children: [
-                  TextField(
-                      decoration: const InputDecoration(
-                        border: OutlineInputBorder(),
-                        labelText: 'Company Name',
-                      ),
-                      controller: companyNameController),
-                  const Padding(padding: EdgeInsets.all(10)),
+                  Form(
+                    key: _formKey,
+                    child: Column(
+                      children: [
+                        TextFormField(
+                          decoration: const InputDecoration(
+                            border: OutlineInputBorder(),
+                            labelText: 'Company Name',
+                          ),
+                          controller: companyNameController,
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'Please enter a company name';
+                            }
+                            return null;
+                          },
+                        ),
+                        const Padding(padding: EdgeInsets.all(10)),
+                        TextFormField(
+                          decoration: const InputDecoration(
+                            border: OutlineInputBorder(),
+                            labelText: 'Order Details',
+                          ),
+                          keyboardType: TextInputType.multiline,
+                          maxLines: 10,
+                          controller: orderDetailsController,
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'Please enter order details';
+                            }
+                            return null;
+                          },
+                        ),
+                        const Padding(padding: EdgeInsets.all(10)),
+                      ],
+                    ),
+                  ),
                   // add date picker widget
                   DateTimePicker(
                       labelText: "Deadline Date",
@@ -191,29 +268,20 @@ class _MyHomePageState extends State<MyHomePage>
                         });
                       },
                       selectTime: (TimeOfDay time) {}),
-                  const Padding(padding: EdgeInsets.all(5)),
-                  TextField(
-                    decoration: const InputDecoration(
-                      border: OutlineInputBorder(),
-                      labelText: 'Order Details',
-                    ),
-                    keyboardType: TextInputType.multiline,
-                    maxLines: 10,
-                    controller: orderDetailsController,
-                  ),
+
                   const Padding(padding: EdgeInsets.all(10)),
                   ElevatedButton(
                     onPressed: () async {
                       // save order
                       final id = await orderRepository.nextId();
-                      if (id.isPresent) {
+                      if (id.isPresent && _formKey.currentState!.validate()) {
                         try {
                           final order = await orderRepository.save(
                               Order(
-                                  id.value,
+                                  orderArg?.id ?? id.value,
                                   companyNameController.text,
                                   orderDetailsController.text,
-                                  'Pending',
+                                  orderArg?.orderStatus ?? 'Pending',
                                   deadlineDate.toIso8601String(),
                                   DateTime.now().toIso8601String()),
                               getOrderFromJson);
@@ -221,8 +289,7 @@ class _MyHomePageState extends State<MyHomePage>
                           // add order to stream
                           if (!mounted) return;
                           Navigator.pop(context);
-                          postSubmit(order);
-                          ;
+                          postSubmit(order, orderArg);
                         } on FaunaDbException catch (e) {
                           Fluttertoast.showToast(
                               msg: "Error: ${e.cause}",
@@ -255,7 +322,13 @@ class _MyHomePageState extends State<MyHomePage>
               );
             },
           );
-        });
+        }).then((value) {
+      setState(() {
+        companyNameController.clear();
+        orderDetailsController.clear();
+        deadlineDate = DateTime.now();
+      });
+    });
   }
 
   @override
@@ -271,10 +344,12 @@ class _MyHomePageState extends State<MyHomePage>
     final userTab = user?.userType == UserType.shop
         ? [const Tab(icon: Icon(Icons.account_box), text: 'User')]
         : [];
+    final length = user?.userType == UserType.shop ? 4 : 3;
     return DefaultTabController(
-        length: user?.userType == UserType.shop ? 4 : 3,
+        length: length,
         child: Scaffold(
           appBar: AppBar(
+            automaticallyImplyLeading: false,
             // Here we take the value from the MyHomePage object that was created by
             // the App.build method, and use it to set our appbar title.
             title: isSearching
@@ -297,13 +372,9 @@ class _MyHomePageState extends State<MyHomePage>
                                   // wait 700 ms
                                   Future.delayed(
                                       const Duration(milliseconds: 700), () {
-                                    final tabIndex =
-                                        DefaultTabController.of(context)!.index;
                                     setState(() {
                                       isSearching = false;
-                                      if (tabIndex == 0 || tabIndex == 1) {
-                                        orderStream.add({EventType.search: ""});
-                                      }
+                                      orderStream.add({EventType.search: ""});
                                     });
                                   });
                                 });
@@ -395,7 +466,7 @@ class _MyHomePageState extends State<MyHomePage>
                         if (!mounted) {
                           return;
                         }
-                        Navigator.pushNamed(context, '/login');
+                        Navigator.pushReplacementNamed(context, '/login');
                       },
                       child: Row(
                         children: const [
@@ -414,8 +485,7 @@ class _MyHomePageState extends State<MyHomePage>
             bottom: TabBar(
               tabs: [
                 const Tab(icon: Icon(Icons.book), text: 'Orders'),
-                const Tab(
-                    icon: Icon(Icons.delivery_dining), text: 'Dispatched'),
+                const Tab(icon: Icon(Icons.delivery_dining), text: 'Dispatch'),
                 const Tab(
                     icon: Icon(Icons.calendar_month_sharp), text: 'Deadline'),
                 ...userTab
@@ -428,16 +498,19 @@ class _MyHomePageState extends State<MyHomePage>
                 orderStream: orderStream,
                 user: user,
                 orders: orders,
+                openModal: openOrderModal,
                 orderRepository: orderRepository,
               ),
               Dispatched(
                 orderRepository: orderRepository,
                 orders: orders,
+                openModal: openOrderModal,
                 orderStream: orderStream,
               ),
               Deadline(
                 orderRepository: orderRepository,
                 orders: orders,
+                openModal: openOrderModal,
                 orderStream: orderStream,
               ),
               user?.userType == UserType.shop
