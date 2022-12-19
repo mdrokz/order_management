@@ -15,12 +15,13 @@ class Orders extends StatefulWidget {
       {Key? key,
       required this.orderStream,
       required this.orders,
-      required this.user,
+      required this.user, required this.openModal,
       required this.orderRepository})
       : super(key: key);
 
   final StreamController<Map<EventType, dynamic>> orderStream;
   final User? user;
+  final Function openModal;
   final Map<String, Order> orders;
   final OrderRepository orderRepository;
 
@@ -37,7 +38,7 @@ class _OrdersState extends State<Orders> {
 
   List<Order> orders = [];
 
-  Future<void> handleEvent(Map<EventType,dynamic> event) async {
+  Future<void> handleEvent(Map<EventType, dynamic> event) async {
     final key = event.keys.first;
     final value = event.values.first;
     switch (key) {
@@ -53,8 +54,7 @@ class _OrdersState extends State<Orders> {
           setState(() {
             orders.removeWhere((element) {
               if (value.containsKey(element.id)) {
-                widget.orderRepository
-                    .remove(element.id, getOrderFromJson);
+                widget.orderRepository.remove(element.id, getOrderFromJson);
                 return true;
               }
               return false;
@@ -75,23 +75,25 @@ class _OrdersState extends State<Orders> {
               return false;
             });
           });
-
         }
         break;
       case EventType.search:
         {
           if (value is String && value.isNotEmpty) {
-            final query = Map_(
-                Paginate(
-                    Match(Index('orders_by_company'), terms: [value,'Pending'])),
-                Lambda("order", Get(Var("order"))));
+            // final query = Map_(
+            //     Paginate(
+            //         Match(Index('orders_by_company'), terms: [value,'Pending'])),
+            //     Lambda("order", Get(Var("order"))));
+
+            final query = Call(Function_("search_orders"),
+                arguments: [value, 'Pending', false]);
 
             setState(() {
               isLoading = true;
             });
 
-            final result = await deserializeFauna<Order>(
-                query, client, getOrderFromJson);
+            final result =
+                await deserializeFauna<Order>(query, client, getOrderFromJson);
 
             setState(() {
               orders = result;
@@ -125,7 +127,8 @@ class _OrdersState extends State<Orders> {
     //     Paginate(Match(Index('dispatched_orders'), terms: ["Pending"])),
     //     Lambda("order", Get(Var("order"))));
 
-    final query = Call(Function_('get_filtered_orders'),arguments: ['Pending']);
+    final query =
+        Call(Function_('get_filtered_orders'), arguments: ['Pending']);
 
     setState(() {
       isLoading = true;
@@ -164,6 +167,12 @@ class _OrdersState extends State<Orders> {
           final deadline = DateTime.parse(order.deadline);
           return Card(
               child: CheckboxListTile(
+            secondary: IconButton(
+              icon: const Icon(Icons.edit),
+              onPressed: () {
+                widget.openModal(order);
+              },
+            ),
             contentPadding: const EdgeInsets.all(10),
             title: Padding(
               padding: const EdgeInsets.symmetric(vertical: 15),

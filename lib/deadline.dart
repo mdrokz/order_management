@@ -15,11 +15,13 @@ class Deadline extends StatefulWidget {
       {Key? key,
       required this.orderStream,
       required this.orders,
+      required this.openModal,
       required this.orderRepository})
       : super(key: key);
 
   final StreamController<Map<EventType, dynamic>> orderStream;
   final Map<String, Order> orders;
+  final Function openModal;
   final OrderRepository orderRepository;
 
   @override
@@ -55,17 +57,20 @@ class _DeadlineState extends State<Deadline> {
       case EventType.search:
         {
           if (value is String && value.isNotEmpty) {
-            final query = Map_(
-                Paginate(Match(Index('orders_by_company'),
-                    terms: [value, 'Pending'])),
-                Lambda("order", Get(Var("order"))));
+            // final query = Map_(
+            //     Paginate(Match(Index('orders_by_company'),
+            //         terms: [value, 'Pending'])),
+            //     Lambda("order", Get(Var("order"))));
+
+            final query = Call(Function_("search_orders"),
+                arguments: [value, 'Pending', true]);
 
             setState(() {
               isLoading = true;
             });
 
             final result =
-            await deserializeFauna<Order>(query, client, getOrderFromJson);
+                await deserializeFauna<Order>(query, client, getOrderFromJson);
 
             setState(() {
               orders = result;
@@ -109,10 +114,11 @@ class _DeadlineState extends State<Deadline> {
       isLoading = true;
     });
 
-    final query = Call(Function_('get_deadlined_orders'),arguments: ['Pending']);
+    final query =
+        Call(Function_('get_deadlined_orders'), arguments: ['Pending']);
 
     final result =
-    await deserializeFauna<Order>(query, client, getOrderFromJson);
+        await deserializeFauna<Order>(query, client, getOrderFromJson);
 
     setState(() {
       orders = result;
@@ -137,29 +143,33 @@ class _DeadlineState extends State<Deadline> {
         final deadline = DateTime.parse(order.deadline);
         return Card(
             child: CheckboxListTile(
-              contentPadding: const EdgeInsets.all(10),
-              title: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 15),
-                child: Text(order.companyName),
-              ),
-              subtitle: Text(
-                  "Order Date: ${formatDate(createdAt)}\nOrder Deadline: ${formatDate(deadline)}\n\n${order.orderDetails}"),
-              value: widget.orders.containsKey(order.id),
-              onChanged: (bool? value) {
-                if (value == true) {
-                  setState(() {
-                    widget.orders[order.id] = order;
-                  });
-                } else {
-                  setState(() {
-                    widget.orders.remove(order.id);
-                  });
-                }
-              },
-            ));
+          contentPadding: const EdgeInsets.all(10),
+          secondary: IconButton(
+            icon: const Icon(Icons.edit),
+            onPressed: () {
+              widget.openModal(order);
+            },
+          ),
+          title: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 15),
+            child: Text(order.companyName),
+          ),
+          subtitle: Text(
+              "Order Date: ${formatDate(createdAt)}\nOrder Deadline: ${formatDate(deadline)}\n\n${order.orderDetails}"),
+          value: widget.orders.containsKey(order.id),
+          onChanged: (bool? value) {
+            if (value == true) {
+              setState(() {
+                widget.orders[order.id] = order;
+              });
+            } else {
+              setState(() {
+                widget.orders.remove(order.id);
+              });
+            }
+          },
+        ));
       },
     );
-
   }
-
 }
