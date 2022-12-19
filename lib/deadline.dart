@@ -95,6 +95,7 @@ class _DeadlineState extends State<Deadline> {
 
   @override
   void dispose() {
+    streamSubscription?.cancel();
     client.close();
     super.dispose();
   }
