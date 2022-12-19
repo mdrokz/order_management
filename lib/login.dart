@@ -1,7 +1,11 @@
 // generate a complete login widget
+import 'dart:io';
+
+import 'package:faunadb_data/faunadb_data.dart';
 import 'package:flutter/material.dart';
 import 'package:faunadb_http/faunadb_http.dart';
 import 'package:faunadb_http/query.dart';
+import 'package:fluttertoast/fluttertoast.dart';
 import 'package:localstorage/localstorage.dart';
 import 'package:order_management/models/user.dart';
 import 'package:order_management/utils.dart';
@@ -38,7 +42,7 @@ class _LoginState extends State<Login> {
   void checkUser() async {
     await localStorage.ready;
     final user = localStorage.getItem('user');
-    if(!mounted) return;
+    if (!mounted) return;
     if (user != null) {
       Navigator.pop(context);
     }
@@ -131,9 +135,9 @@ class _LoginState extends State<Login> {
                               if (_formKey.currentState!.validate()) {
                                 // show snackbar message logging in
                                 final scaffoldController =
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(
-                                            content: Text('Logging in...')));
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                        content: Text('Logging in...')));
 
                                 final query = Map_(
                                     Paginate(Match(Index('users_by_type'),
@@ -142,36 +146,36 @@ class _LoginState extends State<Login> {
                                         ])),
                                     Lambda("user", Get(Var("user"))));
 
-                                final users = await deserializeFauna<User>(
-                                    query, client, getUserFromJson);
+                                try {
+                                  final users = await deserializeFauna<User>(
+                                      query, client, getUserFromJson);
 
-                                for (final user in users) {
-                                  final split = user.password.split(":");
-
-                                  final salt = split[0];
-
-                                  final hash = split[1];
-
-                                  if (compareHash(
-                                      _passwordController.text,
-                                      createUint8ListFromHexString(salt),
-                                      hash)) {
-                                    await localStorage.setItem(
-                                        'user', user.model());
-                                    if (!mounted) {
+                                  for (final user in users) {
+                                    if (compareHash(_passwordController.text,
+                                        user.password)) {
+                                      await localStorage.setItem(
+                                          'user', user.model());
+                                      if (!mounted) {
+                                        return;
+                                      }
+                                      scaffoldController.close();
+                                      Navigator.pushReplacementNamed(
+                                          context, "/");
+                                      // Navigator.pop(context);
                                       return;
+                                    } else {
+                                      if (!mounted) return;
+                                      scaffoldController.close();
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
+                                          const SnackBar(
+                                              content: Text(
+                                                  'Incorrect password or user type')));
                                     }
-                                    scaffoldController.close();
-                                    Navigator.pop(context);
-                                    return;
-                                  } else {
-                                    if(!mounted) return;
-                                    scaffoldController.close();
-                                    ScaffoldMessenger.of(context)
-                                        .showSnackBar(const SnackBar(
-                                            content: Text(
-                                                'Incorrect password or user type')));
                                   }
+                                } catch(e) {
+                                  // show toast with cause
+                                  Fluttertoast.showToast(msg: e.toString());
                                 }
                               }
                             },
