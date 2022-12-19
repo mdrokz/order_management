@@ -10,8 +10,7 @@ import 'package:faunadb_http/query.dart';
 import 'package:order_management/models/user.dart';
 import 'package:pointycastle/export.dart';
 
-import 'models/order.dart';
-
+final keyDerivator = Argon2BytesGenerator();
 
 enum EventType {
   orderAdded,
@@ -27,14 +26,15 @@ String formatDate(DateTime dateTime) {
   return formattedDate;
 }
 
-Future<User?> createUser(UserRepository userRepository,UserType userType, String password) async {
+Future<User?> createUser(UserRepository userRepository, UserType userType,
+    String name, String password) async {
   final id = await userRepository.nextId();
   if (id.isPresent) {
-    final user = User(id.value, userType,
-        hashPassword(password), DateTime.now().toIso8601String());
+    final user = User(
+        id.value, userType, name, hashPassword(password), DateTime.now().toIso8601String());
+
     try {
-      final result = await userRepository.save(
-          user, getUserFromJson);
+      final result = await userRepository.save(user, getUserFromJson);
 
       return result;
       // await localStorage.setItem('user', result.model());
@@ -61,7 +61,8 @@ bool compareDate(String date1, String date2) {
   return date1Formatted.isAfter(date2Formatted);
 }
 
-Future<List<T>> deserializeFauna<T>(Expr query,FaunaClient client,Function deserialize) async {
+Future<List<T>> deserializeFauna<T>(
+    Expr query, FaunaClient client, Function deserialize) async {
   final result = await client.query(query);
 
   final data = result.toJson();
@@ -79,17 +80,18 @@ Future<List<T>> deserializeFauna<T>(Expr query,FaunaClient client,Function deser
 }
 
 String hashPassword(String password) {
-  final salt = Uint8List.fromList(List.generate(16, (index) => Random.secure().nextInt(256)));
+  final salt = Uint8List.fromList(
+      List.generate(16, (index) => Random.secure().nextInt(256)));
 
   final params = Argon2Parameters(
-    Argon2Parameters.ARGON2_i,
+    Argon2Parameters.ARGON2_id,
     salt,
     desiredKeyLength: 16,
     iterations: 3,
     memory: 32,
   );
 
-  final keyDerivator = Argon2BytesGenerator();
+  // final keyGenerator = Argon2BytesGenerator();
 
   keyDerivator.init(params);
 
@@ -116,17 +118,18 @@ Uint8List createUint8ListFromHexString(String hex) {
 }
 
 // compare hash without salt using argon2
-bool compareHash(String password,Uint8List salt, String hash) {
+bool compareHash(String password, String hash) {
+  final hashParts = hash.split(':');
+  final salt = createUint8ListFromHexString(hashParts[0]);
+  final hashBytes = createUint8ListFromHexString(hashParts[1]);
 
   final params = Argon2Parameters(
-    Argon2Parameters.ARGON2_i,
+    Argon2Parameters.ARGON2_id,
     salt,
     desiredKeyLength: 16,
     iterations: 3,
     memory: 32,
   );
-
-  final keyDerivator = Argon2BytesGenerator();
 
   keyDerivator.init(params);
 
@@ -134,7 +137,17 @@ bool compareHash(String password,Uint8List salt, String hash) {
 
   final key = keyDerivator.process(passwordBytes);
 
-  final hex = key.map((e) => e.toRadixString(16).padLeft(2, '0')).join();
+  // final hex = key.map((e) => e.toRadixString(16).padLeft(2, '0')).join();
 
-  return hex == hash;
+  return constantTimeEqual(key, hashBytes);
+}
+
+bool constantTimeEqual(List<int> a, List<int> b) {
+  if (a.length != b.length) return false;
+
+  int result = 0;
+  for (int i = 0; i < a.length; i++) {
+    result |= a[i] ^ b[i];
+  }
+  return result == 0;
 }
