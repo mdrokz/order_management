@@ -49,14 +49,14 @@ class _UserState extends State<Users> {
         }
         break;
 
-      case EventType.search: {
-        if (value is String && value.isNotEmpty) {
-
-        } else {
-          loadUsers();
+      case EventType.search:
+        {
+          if (value is String && value.isNotEmpty) {
+          } else {
+            loadUsers();
+          }
+          break;
         }
-        break;
-      }
 
       case EventType.userDeleted:
         if (value is Map<String, User>) {
@@ -125,7 +125,7 @@ class _UserState extends State<Users> {
           contentPadding: const EdgeInsets.all(10),
           title: Padding(
             padding: const EdgeInsets.symmetric(vertical: 15),
-            child: Text("User type: ${user.userType.value}"),
+            child: Text(user.name),
           ),
           subtitle: Text(formatDate(createdAt)),
           value: widget.users.containsKey(user.id),
