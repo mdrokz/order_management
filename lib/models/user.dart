@@ -18,10 +18,11 @@ extension UserTypeExtension on UserType {
 class User extends Entity<User> {
   String id;
   UserType userType;
+  String name;
   String password;
   String createdAt;
 
-  User(this.id, this.userType, this.password,
+  User(this.id, this.userType,this.name, this.password,
       this.createdAt);
 
   @override
@@ -29,6 +30,7 @@ class User extends Entity<User> {
     return User(
       model['id'],
       userTypeFromString(model['userType']),
+      model['name'],
       model['password'],
       model['createdAt'],
     );
@@ -44,6 +46,7 @@ class User extends Entity<User> {
     return {
       'id': id,
       'userType': userType.value,
+      'name': name,
       'password': password,
       'createdAt': createdAt
     };
@@ -57,6 +60,7 @@ User getUserFromJson(Map<String, dynamic> json) {
   return User(
     json['id'] as String,
     userTypeFromString(json['userType'] as String),
+    json['name'] as String,
     json['password'] as String,
     json['createdAt'] as String,
   );
